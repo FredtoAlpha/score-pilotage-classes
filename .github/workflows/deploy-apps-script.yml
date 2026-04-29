@@ -1,0 +1,47 @@
+name: Deploy Apps Script
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.js"
+      - "**.html"
+      - "appsscript.json"
+      - ".claspignore"
+      - ".github/workflows/deploy-apps-script.yml"
+
+concurrency:
+  group: apps-script-deploy
+  cancel-in-progress: true
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Configure clasp
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.APPS_SCRIPT_ID }}" ] || [ -z "${{ secrets.CLASPRC_JSON }}" ]; then
+            echo "Missing GitHub secrets: APPS_SCRIPT_ID and CLASPRC_JSON are required."
+            exit 1
+          fi
+
+          printf '%s' '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+          printf '{"scriptId":"%s","rootDir":"."}\n' '${{ secrets.APPS_SCRIPT_ID }}' > .clasp.json
+
+      - name: Push to Google Apps Script
+        run: clasp push --force
