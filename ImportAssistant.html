@@ -296,10 +296,28 @@
       background: #f8fafc;
       border-radius: 8px;
       padding: 10px;
+      transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
 
     .file-row input {
       max-width: 260px;
+    }
+
+    .file-row.drop-ready {
+      cursor: copy;
+    }
+
+    .file-row.drag-over {
+      border-color: var(--blue);
+      background: #eff6ff;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .drop-caption {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 8px;
+      white-space: nowrap;
     }
 
     .actions {
@@ -665,7 +683,7 @@
               <p>Colle la liste exportee depuis Pronote. Elle doit contenir au minimum les noms et les classes.</p>
               <div class="input-grid">
                 <div class="file-row">
-                  <span>Collage direct ou fichier CSV/TSV</span>
+                  <span>Collage direct, fichier ou glisser-deposer <span class="drop-caption">CSV / TSV / TXT</span></span>
                   <input type="file" data-file-target="studentsInput" accept=".csv,.tsv,.txt">
                 </div>
                 <textarea id="studentsInput" placeholder="Colle ici la liste eleves Pronote..."></textarea>
@@ -730,7 +748,7 @@
               <p>Importe les tableaux de notes Pronote, idealement une classe a la fois. Le moteur calcule ensuite TRA et PART.</p>
               <div class="input-grid">
                 <div class="file-row">
-                  <span>Ajouter un tableau de notes</span>
+                  <span>Ajouter un tableau de notes <span class="drop-caption">CSV / TSV / TXT</span></span>
                   <input type="file" data-file-target="notesInput" accept=".csv,.tsv,.txt">
                 </div>
                 <textarea id="notesInput" placeholder="Colle ici un tableau de notes Pronote..."></textarea>
@@ -787,7 +805,7 @@
               <p>Colle un recapitulatif par eleve ou une liste evenementielle. Le moteur calcule ensuite ABS.</p>
               <div class="input-grid">
                 <div class="file-row">
-                  <span>Collage direct ou fichier CSV/TSV</span>
+                  <span>Collage direct, fichier ou glisser-deposer <span class="drop-caption">CSV / TSV / TXT</span></span>
                   <input type="file" data-file-target="absencesInput" accept=".csv,.tsv,.txt">
                 </div>
                 <textarea id="absencesInput" placeholder="Colle ici les absences Pronote..."></textarea>
@@ -847,7 +865,7 @@
                   </span>
                 </label>
                 <div class="file-row">
-                  <span>Fichier observations</span>
+                  <span>Fichier observations <span class="drop-caption">glisser-deposer accepte</span></span>
                   <input type="file" data-file-target="observationsInput" accept=".csv,.tsv,.txt">
                 </div>
                 <textarea id="observationsInput" class="small" placeholder="Colle ici les observations Pronote..."></textarea>
@@ -859,7 +877,7 @@
                   </span>
                 </label>
                 <div class="file-row">
-                  <span>Fichier punitions</span>
+                  <span>Fichier punitions <span class="drop-caption">glisser-deposer accepte</span></span>
                   <input type="file" data-file-target="punitionsInput" accept=".csv,.tsv,.txt">
                 </div>
                 <textarea id="punitionsInput" class="small" placeholder="Colle ici les punitions Pronote..."></textarea>
@@ -871,7 +889,7 @@
                   </span>
                 </label>
                 <div class="file-row">
-                  <span>Fichier incidents</span>
+                  <span>Fichier incidents <span class="drop-caption">glisser-deposer accepte</span></span>
                   <input type="file" data-file-target="incidentsInput" accept=".csv,.tsv,.txt">
                 </div>
                 <textarea id="incidentsInput" class="small" placeholder="Colle ici les incidents Pronote..."></textarea>
@@ -1646,6 +1664,49 @@
       renderStepNav();
     }
 
+    function readFileToTarget(file, targetId) {
+      if (!file || !$(targetId)) return;
+
+      var reader = new FileReader();
+      reader.onload = function(evt) {
+        $(targetId).value = evt.target.result || '';
+      };
+      reader.readAsText(file);
+    }
+
+    function attachDropZone(row) {
+      var input = row.querySelector('input[type="file"][data-file-target]');
+      if (!input) return;
+
+      var target = input.getAttribute('data-file-target');
+      row.classList.add('drop-ready');
+
+      ['dragenter', 'dragover'].forEach(function(eventName) {
+        row.addEventListener(eventName, function(evt) {
+          evt.preventDefault();
+          evt.stopPropagation();
+          row.classList.add('drag-over');
+        });
+      });
+
+      ['dragleave', 'dragend'].forEach(function(eventName) {
+        row.addEventListener(eventName, function(evt) {
+          evt.preventDefault();
+          evt.stopPropagation();
+          row.classList.remove('drag-over');
+        });
+      });
+
+      row.addEventListener('drop', function(evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        row.classList.remove('drag-over');
+
+        var file = evt.dataTransfer && evt.dataTransfer.files && evt.dataTransfer.files[0];
+        readFileToTarget(file, target);
+      });
+    }
+
     function attachEvents() {
       $('analyzeStudentsBtn').addEventListener('click', analyzeStudents);
       $('addNotesBtn').addEventListener('click', addNotes);
@@ -1680,14 +1741,11 @@
         input.addEventListener('change', function() {
           var file = input.files && input.files[0];
           var target = input.getAttribute('data-file-target');
-          if (!file || !$(target)) return;
-          var reader = new FileReader();
-          reader.onload = function(evt) {
-            $(target).value = evt.target.result || '';
-          };
-          reader.readAsText(file);
+          readFileToTarget(file, target);
         });
       });
+
+      Array.prototype.forEach.call(document.querySelectorAll('.file-row'), attachDropZone);
     }
 
     async function loadLockStatus() {
