@@ -745,20 +745,20 @@
           <div>
             <div class="panel">
               <h3>2. Notes</h3>
-              <p>Importe les tableaux de notes Pronote, idealement une classe a la fois. Le moteur calcule ensuite TRA et PART.</p>
+              <p>Importe les exports CSV Pronote de notes. Le format recommande est simple : un CSV par classe, ajoute un ou plusieurs fichiers, puis controle le recapitulatif.</p>
               <div class="input-grid">
                 <div class="file-row">
-                  <span>Ajouter un tableau de notes <span class="drop-caption">CSV / TSV / TXT</span></span>
-                  <input type="file" data-file-target="notesInput" accept=".csv,.tsv,.txt">
+                  <span>Ajouter des exports notes Pronote <span class="drop-caption">CSV, plusieurs fichiers acceptes</span></span>
+                  <input type="file" data-file-target="notesInput" accept=".csv,.tsv,.txt" multiple>
                 </div>
-                <textarea id="notesInput" placeholder="Colle ici un tableau de notes Pronote..."></textarea>
+                <textarea id="notesInput" placeholder="Ou colle ici le contenu d'un export CSV Pronote pour une classe..."></textarea>
               </div>
               <div class="actions">
                 <button class="quiet" data-clear="notesInput">Vider</button>
                 <div class="inline-row">
                   <span class="loader" data-loader="notes"><span class="spinner"></span>Analyse...</span>
                   <button id="skipNotesBtn">Je n'ai pas de notes</button>
-                  <button class="primary" id="addNotesBtn">Analyser et ajouter</button>
+                  <button class="primary" id="addNotesBtn">Analyser le collage</button>
                 </div>
               </div>
             </div>
@@ -773,18 +773,20 @@
             <details open>
               <summary>Format attendu</summary>
               <div class="help-body">
-                <p>Colle le tableau Pronote tel quel. Les colonnes matieres sont detectees automatiquement.</p>
+                <p>Format attendu : export CSV Pronote, idealement un fichier par classe. Tu peux selectionner ou glisser plusieurs CSV d'un coup.</p>
                 <ul>
                   <li>Noms acceptes : <span class="mono">NOM</span> + <span class="mono">PRENOM</span>, ou colonne <span class="mono">ELEVE</span>.</li>
+                  <li>Colonne conseillee : <span class="mono">Classe</span>, pour verifier que chaque CSV correspond bien a une classe.</li>
                   <li>Matieres detectees : francais, maths, HG, anglais, LV2, EPS, sciences, techno, arts, musique, latin.</li>
                   <li>Les colonnes <span class="mono">Abs</span> liees aux notes sont ignorees.</li>
+                  <li>Evite l'export global toutes classes si tu importes deja les CSV par classe : cela creerait des doublons de notes.</li>
                 </ul>
               </div>
             </details>
             <details>
               <summary>Que deviennent les notes ?</summary>
               <div class="help-body">
-                <p>Tu entres des moyennes et parfois des oraux. Le backend les transforme en scores internes TRA et PART. L'utilisateur ne renseigne pas les tranches.</p>
+                <p>Tu fournis les moyennes et parfois les oraux exportes par Pronote. Le backend les transforme en scores internes TRA et PART. L'utilisateur ne renseigne pas les tranches.</p>
               </div>
             </details>
             <details>
@@ -1044,8 +1046,8 @@
       {
         id: 'notes',
         title: 'Notes',
-        intro: 'Ajoute les tableaux de notes Pronote. Le moteur transforme les moyennes en scores TRA et PART.',
-        sub: 'Une classe ou plusieurs'
+        intro: 'Ajoute les exports CSV Pronote de notes. Le format recommande est un CSV par classe.',
+        sub: 'CSV par classe'
       },
       {
         id: 'absences',
@@ -1327,15 +1329,7 @@
 
       setLoader('notes', true);
       try {
-        var res = await serverRun('ia_parseNotes', rows);
-        if (!res || !res.success) {
-          setResult('notesResult', 'error', escapeHtml((res && res.error) || 'Analyse impossible.'));
-          return;
-        }
-
-        state.notes.push(res);
-        skips.notes = false;
-        done.notes = true;
+        await parseAndStoreNotesRows(rows, 'collage');
         $('notesInput').value = '';
         renderNotesResult();
         renderStepNav();
@@ -1346,12 +1340,77 @@
       }
     }
 
-    function renderNotesResult() {
+    async function parseAndStoreNotesRows(rows, sourceName) {
+      if (!rows || rows.length < 2) {
+        throw new Error('Fichier notes vide ou incomplet.');
+      }
+
+      var res = await serverRun('ia_parseNotes', rows);
+      if (!res || !res.success) {
+        throw new Error((res && res.error) || 'Analyse impossible.');
+      }
+
+      res.sourceName = sourceName || '';
+      state.notes.push(res);
+      skips.notes = false;
+      done.notes = true;
+      return res;
+    }
+
+    async function addNotesFiles(fileList) {
+      var files = Array.prototype.slice.call(fileList || []).filter(function(file) {
+        return file && /\.(csv|tsv|txt)$/i.test(file.name || '');
+      });
+
+      if (files.length === 0) {
+        setResult('notesResult', 'error', 'Selectionne un ou plusieurs exports CSV Pronote.');
+        return;
+      }
+
+      setLoader('notes', true);
+      setResult('notesResult', '', 'Analyse de ' + plural(files.length, 'fichier notes', 'fichiers notes') + '...');
+
+      var failures = [];
+      try {
+        for (var i = 0; i < files.length; i++) {
+          try {
+            var text = await readFileAsText(files[i]);
+            var rows = parseTable(text);
+            await parseAndStoreNotesRows(rows, files[i].name);
+          } catch (err) {
+            failures.push({
+              name: files[i].name || ('fichier ' + (i + 1)),
+              message: err.message
+            });
+          }
+        }
+
+        var warningHtml = '';
+        if (failures.length > 0) {
+          warningHtml = '<div class="issue warning"><strong>Fichiers non ajoutes</strong>' +
+            failures.map(function(f) {
+              return '<div>' + escapeHtml(f.name) + ' : ' + escapeHtml(f.message) + '</div>';
+            }).join('') +
+            '</div>';
+        }
+
+        renderNotesResult(warningHtml);
+        renderStepNav();
+      } finally {
+        setLoader('notes', false);
+      }
+    }
+
+    function renderNotesResult(extraHtml) {
       if (skips.notes) {
         setResult('notesResult', 'warn', 'Notes volontairement ignorees. TRA et PART seront incomplets.');
         return;
       }
       if (state.notes.length === 0) {
+        if (extraHtml) {
+          setResult('notesResult', 'warn', 'Aucun tableau ajoute.' + extraHtml);
+          return;
+        }
         setResult('notesResult', '', 'Aucun tableau ajoute.');
         return;
       }
@@ -1363,10 +1422,29 @@
         '</div><div class="chips">';
 
       state.notes.forEach(function(n, index) {
-        html += '<span class="chip green">' + escapeHtml(n.classe || ('Tableau ' + (index + 1))) + ' : ' + (n.count || 0) + '</span>';
+        var label = n.classe || n.sourceName || ('Tableau ' + (index + 1));
+        html += '<span class="chip green">' + escapeHtml(label) + ' : ' + (n.count || 0) + '</span>';
       });
-      html += '</div><div class="actions"><span class="muted">Tu peux ajouter un autre tableau ou continuer.</span><button class="danger" id="removeLastNotesBtn">Retirer le dernier tableau</button></div>';
-      setResult('notesResult', 'ok', html);
+      html += '</div>';
+
+      var multiClassWarnings = notesMultiClassWarnings();
+      if (multiClassWarnings.length > 0) {
+        html += '<div class="issue warning"><strong>CSV notes multi-classes detecte</strong>' +
+          multiClassWarnings.map(function(w) { return '<div>' + escapeHtml(w) + '</div>'; }).join('') +
+          '<div>Pour eviter les doublons, prefere un export CSV Pronote par classe.</div></div>';
+      }
+
+      var duplicates = duplicateNotesClasses();
+      if (duplicates.length > 0) {
+        html += '<div class="issue warning"><strong>Classe importee plusieurs fois</strong>' +
+          escapeHtml(duplicates.join(', ')) +
+          '<div>Retire le dernier tableau si tu as ajoute deux fois le meme export.</div></div>';
+      }
+
+      if (extraHtml) html += extraHtml;
+
+      html += '<div class="actions"><span class="muted">Tu peux ajouter un autre CSV Pronote ou continuer.</span><button class="danger" id="removeLastNotesBtn">Retirer le dernier tableau</button></div>';
+      setResult('notesResult', (extraHtml || multiClassWarnings.length || duplicates.length) ? 'warn' : 'ok', html);
       var btn = $('removeLastNotesBtn');
       if (btn) {
         btn.addEventListener('click', function() {
@@ -1376,6 +1454,42 @@
           renderStepNav();
         });
       }
+    }
+
+    function noteClassCounts(noteResult) {
+      var counts = {};
+      (noteResult.notes || []).forEach(function(note) {
+        var classe = note.classe || '';
+        if (!classe) return;
+        counts[classe] = (counts[classe] || 0) + 1;
+      });
+      return counts;
+    }
+
+    function notesMultiClassWarnings() {
+      var warnings = [];
+      state.notes.forEach(function(noteResult, index) {
+        var counts = noteClassCounts(noteResult);
+        var classes = Object.keys(counts);
+        if (classes.length > 1) {
+          warnings.push((noteResult.sourceName || noteResult.classe || ('Tableau ' + (index + 1))) + ' contient ' + classes.length + ' classes : ' + classes.join(', '));
+        }
+      });
+      return warnings;
+    }
+
+    function duplicateNotesClasses() {
+      var counts = {};
+      state.notes.forEach(function(noteResult) {
+        var classes = Object.keys(noteClassCounts(noteResult));
+        if (classes.length === 1) {
+          counts[classes[0]] = (counts[classes[0]] || 0) + 1;
+        }
+      });
+
+      return Object.keys(counts).filter(function(classe) {
+        return counts[classe] > 1;
+      });
     }
 
     function uniqueSubjects() {
@@ -1671,11 +1785,25 @@
     function readFileToTarget(file, targetId) {
       if (!file || !$(targetId)) return;
 
-      var reader = new FileReader();
-      reader.onload = function(evt) {
-        $(targetId).value = evt.target.result || '';
-      };
-      reader.readAsText(file);
+      readFileAsText(file).then(function(text) {
+        $(targetId).value = text || '';
+      }).catch(function(err) {
+        $(targetId).value = '';
+        alert('Lecture du fichier impossible : ' + err.message);
+      });
+    }
+
+    function readFileAsText(file) {
+      return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(evt) {
+          resolve(evt.target.result || '');
+        };
+        reader.onerror = function() {
+          reject(new Error('lecture impossible'));
+        };
+        reader.readAsText(file);
+      });
     }
 
     function attachDropZone(row) {
@@ -1706,7 +1834,13 @@
         evt.stopPropagation();
         row.classList.remove('drag-over');
 
-        var file = evt.dataTransfer && evt.dataTransfer.files && evt.dataTransfer.files[0];
+        var files = evt.dataTransfer && evt.dataTransfer.files;
+        if (target === 'notesInput') {
+          addNotesFiles(files);
+          return;
+        }
+
+        var file = files && files[0];
         readFileToTarget(file, target);
       });
     }
@@ -1743,8 +1877,14 @@
 
       Array.prototype.forEach.call(document.querySelectorAll('input[type="file"][data-file-target]'), function(input) {
         input.addEventListener('change', function() {
-          var file = input.files && input.files[0];
           var target = input.getAttribute('data-file-target');
+          if (target === 'notesInput') {
+            addNotesFiles(input.files);
+            input.value = '';
+            return;
+          }
+
+          var file = input.files && input.files[0];
           readFileToTarget(file, target);
         });
       });
