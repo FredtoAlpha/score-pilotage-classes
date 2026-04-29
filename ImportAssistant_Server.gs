@@ -91,6 +91,7 @@ function ia_parseBehavior(payload) {
 
 function ia_buildImportPreflight(payload) {
   try {
+    var t0 = Date.now();
     payload = payload || {};
     var state = payload.state || {};
     var skips = payload.skips || {};
@@ -108,6 +109,7 @@ function ia_buildImportPreflight(payload) {
     }
 
     var studentBuild = ia_buildStudentMap_(elevesList);
+    var matchIndex = studentBuild.matchIndex;
     issues = issues.concat(studentBuild.issues);
 
     if (notesResults.length === 0) {
@@ -135,16 +137,16 @@ function ia_buildImportPreflight(payload) {
     }
 
     var matching = {
-      notes: ia_matchNotes_(studentBuild.studentMap, notesResults),
-      absences: ia_matchList_(studentBuild.studentMap, absencesList, 'absences'),
-      observations: ia_matchList_(studentBuild.studentMap, observationsList, 'observations'),
-      punitions: ia_matchList_(studentBuild.studentMap, punitionsList, 'punitions'),
-      incidents: ia_matchList_(studentBuild.studentMap, incidentsList, 'incidents')
+      notes: ia_matchNotes_(studentBuild.studentMap, matchIndex, notesResults),
+      absences: ia_matchList_(studentBuild.studentMap, matchIndex, absencesList, 'absences'),
+      observations: ia_matchList_(studentBuild.studentMap, matchIndex, observationsList, 'observations'),
+      punitions: ia_matchList_(studentBuild.studentMap, matchIndex, punitionsList, 'punitions'),
+      incidents: ia_matchList_(studentBuild.studentMap, matchIndex, incidentsList, 'incidents')
     };
 
     issues = issues.concat(ia_issuesFromMatching_(matching));
 
-    var scorePreview = ia_buildScoringPreview_(studentBuild.studentMap, notesResults, absencesList, observationsList, punitionsList, incidentsList);
+    var scorePreview = ia_buildScoringPreview_(studentBuild.studentMap, matchIndex, notesResults, absencesList, observationsList, punitionsList, incidentsList);
     var writePlan = ia_buildWritePlan_(studentBuild.classeGroups);
     var errors = issues.filter(function(issue) { return issue.severity === 'error'; });
 
@@ -163,7 +165,11 @@ function ia_buildImportPreflight(payload) {
       },
       matching: matching,
       scorePreview: scorePreview,
-      writePlan: writePlan
+      writePlan: writePlan,
+      meta: {
+        executionTimeMs: Date.now() - t0,
+        matchingMode: 'indexed'
+      }
     };
   } catch (e) {
     return ia_error_(e);
@@ -322,12 +328,94 @@ function ia_buildStudentMap_(eleves) {
 
   return {
     studentMap: studentMap,
+    matchIndex: ia_buildMatchIndex_(studentMap),
     classeGroups: classeGroups,
     issues: issues
   };
 }
 
-function ia_matchNotes_(studentMap, notesResults) {
+function ia_buildMatchIndex_(studentMap) {
+  var index = {
+    normalized: Object.create(null),
+    fullCompact: Object.create(null),
+    fullNorm: Object.create(null),
+    nomOnly: Object.create(null),
+    nomCounts: Object.create(null)
+  };
+
+  for (var key in studentMap) {
+    var st = studentMap[key];
+    var normNom = normaliserNom_(st.nom);
+    var normPrenom = normaliserNom_(st.prenom);
+    var normalized = normNom + '|' + normPrenom;
+    var compact = (normNom + normPrenom).replace(/\s+/g, '');
+    var fullNorm = (normNom + ' ' + normPrenom).trim();
+
+    ia_indexUnique_(index.normalized, normalized, key);
+    if (compact.length >= 3) ia_indexUnique_(index.fullCompact, compact, key);
+    if (fullNorm.length >= 3) ia_indexUnique_(index.fullNorm, fullNorm, key);
+
+    if (!index.nomCounts[normNom]) index.nomCounts[normNom] = [];
+    index.nomCounts[normNom].push(key);
+  }
+
+  for (var nom in index.nomCounts) {
+    if (index.nomCounts[nom].length === 1) {
+      index.nomOnly[nom] = index.nomCounts[nom][0];
+    }
+  }
+
+  return index;
+}
+
+function ia_indexUnique_(map, token, key) {
+  if (!token) return;
+  if (map[token] === undefined) {
+    map[token] = key;
+  } else if (map[token] !== key) {
+    map[token] = null;
+  }
+}
+
+function ia_findMatchingStudentFast_(studentMap, matchIndex, nom, prenom) {
+  if (!matchIndex) return findMatchingStudent_(studentMap, nom, prenom);
+
+  var cle = cleEleve_(nom, prenom);
+  if (studentMap[cle]) return cle;
+
+  var normNom = normaliserNom_(nom);
+  var normPrenom = normaliserNom_(prenom);
+  var candidate = matchIndex.normalized[normNom + '|' + normPrenom];
+  if (candidate) return candidate;
+
+  var srcFull = (normNom + normPrenom).replace(/\s+/g, '');
+  if (srcFull.length >= 3) {
+    candidate = matchIndex.fullCompact[srcFull];
+    if (candidate) return candidate;
+  }
+
+  var fullName = (String(nom || '') + (prenom ? ' ' + prenom : '')).trim();
+  var fullParts = fullName.split(/\s+/);
+  if (fullParts.length >= 2) {
+    for (var sp = 1; sp < fullParts.length; sp++) {
+      var testNom = normaliserNom_(fullParts.slice(0, sp).join(' '));
+      var testPrenom = normaliserNom_(fullParts.slice(sp).join(' '));
+      candidate = matchIndex.normalized[testNom + '|' + testPrenom];
+      if (candidate) return candidate;
+    }
+  }
+
+  candidate = matchIndex.nomOnly[normNom];
+  if (candidate) return candidate;
+
+  var fullNorm = normaliserNom_(fullName);
+  candidate = matchIndex.fullNorm[fullNorm];
+  if (candidate) return candidate;
+
+  return null;
+}
+
+function ia_matchNotes_(studentMap, matchIndex, notesResults) {
   var total = 0;
   var matched = 0;
   var unmatched = [];
@@ -339,7 +427,7 @@ function ia_matchNotes_(studentMap, notesResults) {
     total += notes.length;
 
     notes.forEach(function(note) {
-      var key = findMatchingStudent_(studentMap, note.nom, note.prenom);
+      var key = ia_findMatchingStudentFast_(studentMap, matchIndex, note.nom, note.prenom);
       if (key) classMatched++;
       else unmatched.push((note.nom || '') + ' ' + (note.prenom || ''));
     });
@@ -358,12 +446,12 @@ function ia_matchNotes_(studentMap, notesResults) {
   return ia_matchReport_('notes', total, matched, unmatched, perClass);
 }
 
-function ia_matchList_(studentMap, list, label) {
+function ia_matchList_(studentMap, matchIndex, list, label) {
   var matched = 0;
   var unmatched = [];
 
   list.forEach(function(item) {
-    var key = findMatchingStudent_(studentMap, item.nom, item.prenom);
+    var key = ia_findMatchingStudentFast_(studentMap, matchIndex, item.nom, item.prenom);
     if (key) matched++;
     else unmatched.push((item.nom || '') + ' ' + (item.prenom || ''));
   });
@@ -401,8 +489,9 @@ function ia_issuesFromMatching_(matching) {
   return issues;
 }
 
-function ia_buildScoringPreview_(studentMap, notesResults, absencesList, observationsList, punitionsList, incidentsList) {
+function ia_buildScoringPreview_(studentMap, matchIndex, notesResults, absencesList, observationsList, punitionsList, incidentsList) {
   var key;
+  var cfg = ia_getPreviewScoringCfg_();
   var scorePreview = {
     distributions: {
       COM: ia_emptyScoreDistribution_(),
@@ -422,7 +511,7 @@ function ia_buildScoringPreview_(studentMap, notesResults, absencesList, observa
   notesResults.forEach(function(result) {
     var notes = result && result.notes ? result.notes : [];
     notes.forEach(function(note) {
-      key = findMatchingStudent_(studentMap, note.nom, note.prenom);
+      key = ia_findMatchingStudentFast_(studentMap, matchIndex, note.nom, note.prenom);
       if (key) {
         studentMap[key].moyennes = note.moyennes || {};
         studentMap[key].oraux = note.oraux || {};
@@ -431,7 +520,7 @@ function ia_buildScoringPreview_(studentMap, notesResults, absencesList, observa
   });
 
   absencesList.forEach(function(abs) {
-    key = findMatchingStudent_(studentMap, abs.nom, abs.prenom);
+    key = ia_findMatchingStudentFast_(studentMap, matchIndex, abs.nom, abs.prenom);
     if (key) {
       studentMap[key].dj = abs.dj || 0;
       studentMap[key].nj = abs.nj || 0;
@@ -439,17 +528,17 @@ function ia_buildScoringPreview_(studentMap, notesResults, absencesList, observa
   });
 
   punitionsList.forEach(function(pun) {
-    key = findMatchingStudent_(studentMap, pun.nom, pun.prenom);
+    key = ia_findMatchingStudentFast_(studentMap, matchIndex, pun.nom, pun.prenom);
     if (key) studentMap[key].nbPunitions += pun.nb || 0;
   });
 
   incidentsList.forEach(function(inc) {
-    key = findMatchingStudent_(studentMap, inc.nom, inc.prenom);
+    key = ia_findMatchingStudentFast_(studentMap, matchIndex, inc.nom, inc.prenom);
     if (key) studentMap[key].nbIncidents += inc.nb || 0;
   });
 
   observationsList.forEach(function(obs) {
-    key = findMatchingStudent_(studentMap, obs.nom, obs.prenom);
+    key = ia_findMatchingStudentFast_(studentMap, matchIndex, obs.nom, obs.prenom);
     if (key) {
       studentMap[key].nbObservations += obs.nbObservationsNeg || 0;
       studentMap[key].nbEncourage += obs.nbEncourage || 0;
@@ -459,10 +548,10 @@ function ia_buildScoringPreview_(studentMap, notesResults, absencesList, observa
   for (key in studentMap) {
     var st = studentMap[key];
     var scores = {
-      COM: calcScoreCOM_import_(st.nbPunitions, st.nbIncidents, st.nbObservations, st.nbEncourage),
-      TRA: calcScoreTRA_import_(st.moyennes),
-      PART: calcScorePART_import_(st.oraux),
-      ABS: calcScoreABS_import_(st.dj, st.nj)
+      COM: ia_calcScoreCOMPreview_(st.nbPunitions, st.nbIncidents, st.nbObservations, st.nbEncourage, cfg),
+      TRA: ia_calcScoreTRAPreview_(st.moyennes, cfg),
+      PART: ia_calcScorePARTPreview_(st.oraux, cfg),
+      ABS: ia_calcScoreABSPreview_(st.dj, st.nj, cfg)
     };
 
     Object.keys(scores).forEach(function(crit) {
@@ -485,6 +574,100 @@ function ia_buildScoringPreview_(studentMap, notesResults, absencesList, observa
   }
 
   return scorePreview;
+}
+
+function ia_getPreviewScoringCfg_() {
+  if (typeof getImportScoringCfg_ === 'function') return getImportScoringCfg_();
+  return {
+    seuils: {
+      TRA: [
+        { score: 4, min: 15, max: 20 },
+        { score: 3, min: 12, max: 14.999 },
+        { score: 2, min: 8, max: 11.999 },
+        { score: 1, min: 0, max: 7.999 }
+      ],
+      PART: [
+        { score: 4, min: 15, max: 20 },
+        { score: 3, min: 12, max: 14.999 },
+        { score: 2, min: 8, max: 11.999 },
+        { score: 1, min: 0, max: 7.999 }
+      ],
+      COM: [
+        { score: 4, min: 0, max: 0 },
+        { score: 3, min: 1, max: 5 },
+        { score: 2, min: 6, max: 20 },
+        { score: 1, min: 21, max: 999 }
+      ],
+      ABS: {
+        DJ: [
+          { score: 4, min: 0, max: 5 },
+          { score: 3, min: 6, max: 13 },
+          { score: 2, min: 14, max: 25 },
+          { score: 1, min: 26, max: 999 }
+        ],
+        NJ: [
+          { score: 4, min: 0, max: 0 },
+          { score: 3, min: 1, max: 2 },
+          { score: 2, min: 3, max: 5 },
+          { score: 1, min: 6, max: 999 }
+        ],
+        poidsDJ: 0.6,
+        poidsNJ: 0.4
+      }
+    }
+  };
+}
+
+function ia_scoreByThreshold_(value, thresholds) {
+  if (value === null || value === undefined || isNaN(value)) return null;
+  for (var i = 0; i < thresholds.length; i++) {
+    if (value >= thresholds[i].min && value <= thresholds[i].max) return thresholds[i].score;
+  }
+  return null;
+}
+
+function ia_calcScoreTRAPreview_(moyennes, cfg) {
+  if (!moyennes || Object.keys(moyennes).length === 0) return null;
+  var coeffMap = { FRANC: 4.5, MATH: 3.5, HG: 3.0, ANG: 3.0, LV2: 2.5, EPS: 2.0, PHCH: 1.5, SVT: 1.5, TECH: 1.5, APLA: 1.0, MUS: 1.0, LAT: 1.0 };
+  var totalPts = 0;
+  var totalCoeff = 0;
+  for (var id in moyennes) {
+    var note = moyennes[id];
+    if (note === null || note === undefined) continue;
+    var coeff = coeffMap[id] || 1.0;
+    totalPts += note * coeff;
+    totalCoeff += coeff;
+  }
+  if (totalCoeff === 0) return null;
+  return ia_scoreByThreshold_(Math.round(totalPts / totalCoeff * 100) / 100, cfg.seuils.TRA);
+}
+
+function ia_calcScorePARTPreview_(oraux, cfg) {
+  if (!oraux || Object.keys(oraux).length === 0) return null;
+  var notes = [];
+  for (var id in oraux) {
+    if (oraux[id] !== null && oraux[id] !== undefined) notes.push(oraux[id]);
+  }
+  if (notes.length === 0) return null;
+  var moy = notes.reduce(function(a, b) { return a + b; }, 0) / notes.length;
+  return ia_scoreByThreshold_(Math.round(moy * 100) / 100, cfg.seuils.PART);
+}
+
+function ia_calcScoreABSPreview_(dj, nj, cfg) {
+  if (dj === 0 && nj === 0) return 4;
+  var seuils = cfg.seuils.ABS;
+  var scoreDJ = ia_scoreByThreshold_(dj, seuils.DJ);
+  var scoreNJ = ia_scoreByThreshold_(nj, seuils.NJ);
+  return Math.ceil(scoreDJ * seuils.poidsDJ + scoreNJ * seuils.poidsNJ);
+}
+
+function ia_calcScoreCOMPreview_(nbPunitions, nbIncidents, nbObservations, nbEncourage, cfg) {
+  var obsNet = nbObservations || 0;
+  if ((nbEncourage || 0) > 0 && obsNet > 0) {
+    obsNet = obsNet - Math.min(nbEncourage, Math.floor(obsNet * 0.3));
+  }
+  var total = (nbPunitions || 0) * 2 + (nbIncidents || 0) * 3 + Math.ceil(obsNet * 0.5);
+  return ia_scoreByThreshold_(total, cfg.seuils.COM);
 }
 
 function ia_emptyScoreDistribution_() {

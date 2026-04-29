@@ -1399,13 +1399,18 @@ function findMatchingStudent_(studentMap, nom, prenom) {
  * Helper : resout la config scoring depuis getScoringConfig() ou fallback statique.
  * Ne throw jamais — retourne toujours un objet utilisable.
  */
+var IMPORT_SCORING_CFG_CACHE_ = null;
+
 function getImportScoringCfg_() {
+  if (IMPORT_SCORING_CFG_CACHE_) return IMPORT_SCORING_CFG_CACHE_;
+
   try {
     if (typeof getScoringConfig === 'function') {
       var cfg = getScoringConfig();
       if (cfg && cfg.seuils && cfg.seuils.TRA && cfg.seuils.ABS) {
         cfg._source = 'dynamique (getScoringConfig)';
-        return cfg;
+        IMPORT_SCORING_CFG_CACHE_ = cfg;
+        return IMPORT_SCORING_CFG_CACHE_;
       }
     }
   } catch (e) {
@@ -1413,7 +1418,7 @@ function getImportScoringCfg_() {
   }
   // Fallback statique (memes seuils que SCORING_DEFAULTS)
   Logger.log('[WARN] Scoring: fallback statique (getScoringConfig indisponible)');
-  return {
+  IMPORT_SCORING_CFG_CACHE_ = {
     _source: 'fallback statique',
     seuils: {
       TRA: [
@@ -1452,6 +1457,7 @@ function getImportScoringCfg_() {
       }
     }
   };
+  return IMPORT_SCORING_CFG_CACHE_;
 }
 
 function calcScoreTRA_import_(moyennes) {
