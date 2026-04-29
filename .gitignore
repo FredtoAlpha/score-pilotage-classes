@@ -1,0 +1,16 @@
+# Local clasp configuration and credentials
+.clasp.json
+.clasprc.json
+.clasprc*.json
+
+# Dependencies and local tooling
+node_modules/
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local scratch folders
+_github_check_score_pilotage_classes/
+VERSION_CODEX_OPTIMISEE/
