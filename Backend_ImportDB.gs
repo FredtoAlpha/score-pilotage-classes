@@ -342,6 +342,20 @@ function v3_parseNotesMoyennes(rows) {
     var rawHeaders = rows[headerRow].map(function(h) { return String(h || '').trim().toUpperCase(); });
     Logger.log('Notes - Headers bruts: ' + rawHeaders.join(' | '));
 
+    // Pronote exporte parfois deux lignes d'en-tete :
+    // ligne 1 = matieres, ligne 2 = Nom/S./Classe + Note/Abs.
+    // On garde rawHeaders pour les matieres, mais on detecte NOM/CLASSE
+    // sur la ligne identite si elle existe.
+    var identityHeaderRow = headerRow;
+    if (headerRow + 1 < rows.length) {
+      var possibleIdentityHeaders = rows[headerRow + 1].map(function(h) { return String(h || '').trim().toUpperCase(); });
+      if (findImportCol_(possibleIdentityHeaders, ['^NOM$', '^[E\u00c9]L[E\u00c8]VE', 'NOM']) >= 0 ||
+          findImportCol_(possibleIdentityHeaders, ['CLASSE']) >= 0) {
+        identityHeaderRow = headerRow + 1;
+      }
+    }
+    var identityHeaders = rows[identityHeaderRow].map(function(h) { return String(h || '').trim().toUpperCase(); });
+
     // DETECTER LA SOUS-LIGNE "Abs" : Pronote exporte [Note | Abs] pour chaque matiere
     // La ligne juste apres le header contient "Abs", "1", "2", etc.
     var absColsSet = {};  // colonnes qui contiennent des absences (a exclure)
@@ -362,9 +376,13 @@ function v3_parseNotesMoyennes(rows) {
       }
     }
 
-    var colNom = findImportCol_(rawHeaders, ['^NOM$', '^[E\u00c9]L[E\u00c8]VE', 'NOM']);
-    var colPrenom = findImportCol_(rawHeaders, ['PR[E\u00c9]NOM', 'PRENOM']);
-    var colClasse = findImportCol_(rawHeaders, ['CLASSE']);
+    if (identityHeaderRow > headerRow) {
+      dataStartRow = Math.max(dataStartRow, identityHeaderRow + 1);
+    }
+
+    var colNom = findImportCol_(identityHeaders, ['^NOM$', '^[E\u00c9]L[E\u00c8]VE', 'NOM']);
+    var colPrenom = findImportCol_(identityHeaders, ['PR[E\u00c9]NOM', 'PRENOM']);
+    var colClasse = findImportCol_(identityHeaders, ['CLASSE']);
 
     // DETECTION POSITION-BASED POUR HEADERS REPETES
     var matieresConfig = [
@@ -449,8 +467,10 @@ function v3_parseNotesMoyennes(rows) {
       if (colPrenom >= 0) prenom = String(row[colPrenom] || '').trim();
       if (colClasse >= 0) classe = normaliserClasse_(row[colClasse]);
 
-      // Si pas de colonne NOM explicite, chercher dans les cellules
-      if (!nom) {
+      // Si pas de colonne NOM explicite, chercher dans les cellules.
+      // Si une colonne NOM existe mais est vide, c'est probablement une ligne
+      // d'en-tete matieres ou de synthese : on ne doit pas prendre AGL1/EPS/etc.
+      if (!nom && colNom < 0) {
         for (var ci2 = 0; ci2 < Math.min(row.length, 6); ci2++) {
           var cellVal = String(row[ci2] || '').trim();
           if (cellVal && cellVal.length >= 2 && isNaN(cellVal.replace(',', '.'))
