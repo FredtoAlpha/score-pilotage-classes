@@ -969,7 +969,8 @@
                 <ul>
                   <li>Erreur : il faut corriger avant d'ecrire.</li>
                   <li>Avertissement : l'import peut continuer, mais tu sais ce qui sera incomplet.</li>
-                  <li>Matching : pourcentage de lignes rattachees aux eleves de la liste.</li>
+                  <li>Matching : pourcentage de lignes importees rattachees aux eleves de la liste.</li>
+                  <li>Couverture : nombre de lignes importees par rapport a toute la cohorte.</li>
                 </ul>
               </div>
             </details>
@@ -1513,7 +1514,7 @@
         html += '<div class="issue info"><strong>Aucun blocage detecte</strong>Tu peux passer a l ecriture.</div>';
       }
       setResult('preflightVerdict', errors.length ? 'error' : (warnings.length ? 'warn' : 'ok'), html);
-      renderMatching(res.matching || {});
+      renderMatching(res.matching || {}, summary.students || 0);
       renderScorePreview(res.scorePreview || {});
       renderWritePlan(res.writePlan || {});
     }
@@ -1533,16 +1534,19 @@
       }).join('') + '</div>';
     }
 
-    function renderMatching(matching) {
+    function renderMatching(matching, studentCount) {
       var keys = ['notes', 'absences', 'observations', 'punitions', 'incidents'];
       var html = keys.map(function(key) {
         var r = matching[key] || {};
         var rate = r.rate === null || r.rate === undefined ? 0 : r.rate;
         var label = key.charAt(0).toUpperCase() + key.slice(1);
+        var coverage = studentCount > 0 && r.total > 0
+          ? ' | couverture cohorte : ' + Math.round((r.matched || 0) / studentCount * 1000) / 10 + '%'
+          : '';
         return '<div class="match-row">' +
           '<strong>' + escapeHtml(label) + '</strong>' +
           '<div><div class="bar"><span style="width:' + Math.max(0, Math.min(100, rate)) + '%"></span></div>' +
-          '<div class="muted">' + (r.matched || 0) + ' / ' + (r.total || 0) + ' lignes rattachees</div></div>' +
+          '<div class="muted">' + (r.matched || 0) + ' / ' + (r.total || 0) + ' lignes importees rattachees' + coverage + '</div></div>' +
           '<span class="badge">' + (r.rate === null || r.rate === undefined ? '-' : rate + '%') + '</span>' +
           '</div>';
       }).join('');

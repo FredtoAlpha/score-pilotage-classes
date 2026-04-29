@@ -145,6 +145,7 @@ function ia_buildImportPreflight(payload) {
     };
 
     issues = issues.concat(ia_issuesFromMatching_(matching));
+    issues = issues.concat(ia_issuesFromCoverage_(matching, elevesList.length));
 
     var scorePreview = ia_buildScoringPreview_(studentBuild.studentMap, matchIndex, notesResults, absencesList, observationsList, punitionsList, incidentsList);
     var writePlan = ia_buildWritePlan_(studentBuild.classeGroups);
@@ -469,6 +470,26 @@ function ia_matchReport_(label, total, matched, unmatched, perClass) {
     rate: total > 0 ? Math.round((matched / total) * 1000) / 10 : null,
     perClass: perClass || []
   };
+}
+
+function ia_issuesFromCoverage_(matching, studentCount) {
+  var issues = [];
+  var notes = matching.notes;
+
+  if (notes && notes.total > 0 && studentCount > 0 && notes.matched < studentCount * 0.8) {
+    issues.push(ia_issue_(
+      'warning',
+      'NOTES_PARTIAL_COHORT',
+      'Notes probablement partielles : ' + notes.matched + ' ligne(s) de notes rattachee(s) pour ' + studentCount + ' eleve(s) dans la liste. Tu as sans doute importe une seule classe de notes ; ajoute les autres tableaux de notes avant ecriture.',
+      {
+        matched: notes.matched,
+        expectedStudents: studentCount,
+        importedTables: notes.perClass ? notes.perClass.length : 0
+      }
+    ));
+  }
+
+  return issues;
 }
 
 function ia_issuesFromMatching_(matching) {
