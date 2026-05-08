@@ -630,6 +630,71 @@
       display: none !important;
     }
 
+    .pronote-guide > summary {
+      color: #1e3a8a;
+    }
+
+    .pronote-figure {
+      margin: 0 0 12px;
+      padding: 0;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #f1f5f9;
+      overflow: hidden;
+    }
+
+    .pronote-figure img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    .pronote-figure img[src=""],
+    .pronote-figure img:not([src]) {
+      display: none;
+    }
+
+    .pronote-figure figcaption {
+      padding: 18px 12px;
+      color: #64748b;
+      font-size: 12px;
+      font-style: italic;
+      text-align: center;
+    }
+
+    .pronote-figure img[src]:not([src=""]) ~ figcaption {
+      padding: 6px 10px;
+      background: #e2e8f0;
+      font-style: normal;
+      text-align: left;
+    }
+
+    .pronote-steps {
+      margin: 8px 0 0 22px;
+      padding: 0;
+    }
+
+    .pronote-steps li {
+      margin: 6px 0;
+    }
+
+    .tip-box {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: #fef3c7;
+      border-left: 3px solid #f59e0b;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #78350f;
+    }
+
+    .tip-box strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #92400e;
+    }
+
     @media (max-width: 1120px) {
       .shell {
         grid-template-columns: 1fr;
@@ -704,7 +769,31 @@
           </div>
 
           <aside>
-            <details open>
+            <details class="pronote-guide" open>
+              <summary>Comment exporter depuis Pronote</summary>
+              <div class="help-body">
+                <figure class="pronote-figure">
+                  <!-- Pour activer la demonstration : remplace src="" par l'URL d'un GIF (5-10 sec)
+                       qui montre la sequence dans Pronote. Hebergement recommande :
+                       Drive (lien partage public, format https://drive.google.com/uc?id=ID_FICHIER)
+                       ou base64 inline. La caption au-dessous changera de style automatiquement. -->
+                  <img src="" alt="Demonstration Pronote - liste eleves">
+                  <figcaption>Emplacement reserve pour un GIF Pronote (a ajouter par l'admin).</figcaption>
+                </figure>
+                <ol class="pronote-steps">
+                  <li>Ouvre dans Pronote la vue qui liste tes eleves par classe.</li>
+                  <li>Affiche au minimum les colonnes <span class="mono">NOM</span>, <span class="mono">PRENOM</span>, <span class="mono">CLASSE</span>, <span class="mono">S.</span> (sexe).</li>
+                  <li>Ajoute si possible <span class="mono">Toutes les options</span>, <span class="mono">LV2</span> (ou Langue vivante 2) et <span class="mono">Dispositif d'accompagnement</span>.</li>
+                  <li>Selectionne tout le tableau (Ctrl+A) puis copie (Ctrl+C).</li>
+                  <li>Reviens ici, colle dans la zone a gauche, clique <strong>Analyser eleves</strong>.</li>
+                </ol>
+                <div class="tip-box">
+                  <strong>A eviter</strong>
+                  Ne fais qu'UN seul export pour toute la cohorte. Si tu colles deux fois la meme classe, tu auras des doublons NOM/PRENOM bloquants au preflight.
+                </div>
+              </div>
+            </details>
+            <details>
               <summary>Format attendu</summary>
               <div class="help-body">
                 <p>Tu ne saisis pas une tranche de niveau ici. Tu donnes la liste brute des eleves.</p>
@@ -770,7 +859,30 @@
           </div>
 
           <aside>
-            <details open>
+            <details class="pronote-guide" open>
+              <summary>Comment exporter depuis Pronote</summary>
+              <div class="help-body">
+                <figure class="pronote-figure">
+                  <!-- A faire : remplace src="" par un GIF (5-10 sec) qui montre l'export
+                       du tableau de moyennes par classe. Voir commentaire de l'etape 1
+                       pour les options d'hebergement. -->
+                  <img src="" alt="Demonstration Pronote - moyennes par classe">
+                  <figcaption>Emplacement reserve pour un GIF Pronote (a ajouter par l'admin).</figcaption>
+                </figure>
+                <ol class="pronote-steps">
+                  <li>Dans Pronote, ouvre le tableau des moyennes pour UNE classe (vue par classe, pas par eleve).</li>
+                  <li>Verifie que les colonnes affichees sont les <strong>moyennes par matiere</strong> (et l'<strong>oral</strong> pour anglais et LV2 si pertinent), pas les notes individuelles.</li>
+                  <li>Exporte au format CSV ou copie le tableau directement.</li>
+                  <li>Repete pour <strong>chaque classe</strong> du niveau : un fichier ou un collage par classe.</li>
+                  <li>Glisse les CSV dans la zone fichier, ou colle le contenu, puis clique <strong>Analyser le collage</strong>.</li>
+                </ol>
+                <div class="tip-box">
+                  <strong>A eviter</strong>
+                  Ne mixe pas l'export "toutes classes" avec les CSV par classe : tu importerais deux fois les memes notes. Choisis l'un ou l'autre.
+                </div>
+              </div>
+            </details>
+            <details>
               <summary>Format attendu</summary>
               <div class="help-body">
                 <p>Format attendu : export CSV Pronote, idealement un fichier par classe. Tu peux selectionner ou glisser plusieurs CSV d'un coup.</p>
@@ -829,7 +941,28 @@
           </div>
 
           <aside>
-            <details open>
+            <details class="pronote-guide" open>
+              <summary>Comment exporter depuis Pronote</summary>
+              <div class="help-body">
+                <figure class="pronote-figure">
+                  <!-- A faire : remplace src="" par un GIF montrant l'export du tableau
+                       absences (recap par eleve avec DJ / NJ). Voir etape 1 pour le hosting. -->
+                  <img src="" alt="Demonstration Pronote - absences">
+                  <figcaption>Emplacement reserve pour un GIF Pronote (a ajouter par l'admin).</figcaption>
+                </figure>
+                <ol class="pronote-steps">
+                  <li>Dans Pronote, ouvre la vue des absences pour la <strong>periode visee</strong> (trimestre courant ou annee a date).</li>
+                  <li>Choisis si possible la vue <strong>recapitulative par eleve</strong> : tu obtiens directement <span class="mono">DJ</span> (demi-journees) et <span class="mono">NJ</span> (non justifiees).</li>
+                  <li>A defaut, prends la liste evenementielle (une ligne par absence avec une date) : l'assistant agregera.</li>
+                  <li>Copie le tableau et colle ici, puis clique <strong>Analyser les absences</strong>.</li>
+                </ol>
+                <div class="tip-box">
+                  <strong>A eviter</strong>
+                  Garde une periode coherente avec le reste de l'import. Si les notes couvrent le trimestre 2, ne colle pas les absences de l'annee complete : le score ABS sera disproportionne.
+                </div>
+              </div>
+            </details>
+            <details>
               <summary>Format attendu</summary>
               <div class="help-body">
                 <p>Deux formats sont acceptes.</p>
@@ -913,7 +1046,30 @@
           </div>
 
           <aside>
-            <details open>
+            <details class="pronote-guide" open>
+              <summary>Comment exporter depuis Pronote</summary>
+              <div class="help-body">
+                <figure class="pronote-figure">
+                  <!-- A faire : remplace src="" par un GIF montrant les trois vues
+                       (observations / punitions / incidents) cote a cote. Voir etape 1
+                       pour le hosting. -->
+                  <img src="" alt="Demonstration Pronote - vie scolaire">
+                  <figcaption>Emplacement reserve pour un GIF Pronote (a ajouter par l'admin).</figcaption>
+                </figure>
+                <p>Dans Pronote, les trois donnees sont dans des vues distinctes. Tu remplis uniquement les zones pertinentes ; les zones laissees vides sont ignorees au calcul.</p>
+                <ol class="pronote-steps">
+                  <li><strong>Observations</strong> : ouvre le cahier d'observations / saisies de l'enseignant. Recupere le tableau recap par eleve, copie, colle dans la zone Observations.</li>
+                  <li><strong>Punitions</strong> : ouvre la vue punitions, recupere le tableau recap par eleve (avec colonne <span class="mono">Nombre</span> si dispo), colle dans la zone Punitions.</li>
+                  <li><strong>Incidents</strong> : ouvre la vue incidents / faits graves, recupere le recap par eleve, colle dans la zone Incidents.</li>
+                  <li>Clique <strong>Analyser la vie scolaire</strong>.</li>
+                </ol>
+                <div class="tip-box">
+                  <strong>A eviter</strong>
+                  Ne colle pas le meme tableau dans deux zones. Le score COM serait double et faussement degrade. Si tu n'as qu'une vue qui melange tout, mets-la dans Observations et laisse les autres vides.
+                </div>
+              </div>
+            </details>
+            <details>
               <summary>Format attendu</summary>
               <div class="help-body">
                 <ul>
