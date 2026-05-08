@@ -235,22 +235,39 @@ function ia_getImportLockStatus() {
 
 function ia_analyzeStudents_(eleves) {
   var byKey = {};
-  var duplicateKeys = [];
   var missingSexe = 0;
   var missingLv2 = 0;
   var classes = {};
 
-  eleves.forEach(function(e) {
+  eleves.forEach(function(e, index) {
     var key = cleEleve_(e.nom, e.prenom);
-    if (byKey[key]) duplicateKeys.push(key);
-    byKey[key] = true;
+    if (!byKey[key]) {
+      byKey[key] = { nom: e.nom || '', prenom: e.prenom || '', classes: [], rows: [] };
+    }
+    var entry = byKey[key];
+    if (e.classe && entry.classes.indexOf(e.classe) === -1) entry.classes.push(e.classe);
+    entry.rows.push(index + 1);
     if (!e.sexe) missingSexe++;
     if (!e.lv2) missingLv2++;
     if (e.classe) classes[e.classe] = (classes[e.classe] || 0) + 1;
   });
 
+  var duplicates = [];
+  Object.keys(byKey).forEach(function(k) {
+    if (byKey[k].rows.length > 1) {
+      duplicates.push({
+        nom: byKey[k].nom,
+        prenom: byKey[k].prenom,
+        count: byKey[k].rows.length,
+        classes: byKey[k].classes,
+        rows: byKey[k].rows
+      });
+    }
+  });
+
   return {
-    duplicateKeys: duplicateKeys,
+    duplicateKeys: duplicates.map(function(d) { return d.nom + '|' + d.prenom; }),
+    duplicates: duplicates,
     missingSexe: missingSexe,
     missingLv2: missingLv2,
     classes: classes

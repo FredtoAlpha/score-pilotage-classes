@@ -302,7 +302,11 @@ function v3_parseListeEleves(rows) {
       success: true,
       eleves: eleves,
       count: eleves.length,
-      classes: classes
+      classes: classes,
+      optColumnDetected: colOptions >= 0,
+      lv2ColumnDetected: colLangue >= 0,
+      dispoColumnDetected: colDispo >= 0,
+      sexeColumnDetected: colSexe >= 0
     };
 
   } catch (e) {
@@ -1366,14 +1370,30 @@ function v3_compileImport(data) {
     var dissoSuggestion = suggestDissoGroups_(studentMap, classeGroups);
 
     // 12. DETECTION ANOMALIES LV2/OPT
+    // On ne signale une anomalie que si la colonne source etait detectee.
+    // Si la colonne OPT n'existait pas dans l'export, l'absence d'option n'est
+    // pas une anomalie : la majorite des eleves n'ont pas d'option.
+    var optColDetected = !!(data.eleves && (data.eleves.optColumnDetected ||
+      (data.eleves.eleves && data.eleves.eleves.some(function(e) { return e && e.opt; }))));
+    var lv2ColDetected = !!(data.eleves && (data.eleves.lv2ColumnDetected ||
+      data.eleves.optColumnDetected ||
+      (data.eleves.eleves && data.eleves.eleves.some(function(e) { return e && e.lv2; }))));
+
     var anomLV2 = 0, anomOPT = 0;
     for (var cleA in studentMap) {
       var stA = studentMap[cleA];
       if (!stA.lv2) anomLV2++;
       if (!stA.opt) anomOPT++;
     }
-    if (anomLV2 > 0) RunAudit_log(runId, 'WARN', 'LV2 vide pour ' + anomLV2 + ' eleve(s)');
-    if (anomOPT > 0) RunAudit_log(runId, 'WARN', 'OPT vide pour ' + anomOPT + ' eleve(s)');
+    if (lv2ColDetected && anomLV2 > 0) {
+      RunAudit_log(runId, 'WARN', 'LV2 vide pour ' + anomLV2 + ' eleve(s) (colonne LV2/options presente)');
+    }
+    if (optColDetected && anomOPT > 0) {
+      RunAudit_log(runId, 'WARN', 'OPT vide pour ' + anomOPT + ' eleve(s) (colonne OPT presente)');
+    }
+    if (!optColDetected) {
+      RunAudit_log(runId, 'INFO', 'OPT non analysee : pas de colonne OPT/options dans l export.');
+    }
 
     RunAudit_log(runId, 'INFO', '=== COMPILATION TERMINEE ===');
 
