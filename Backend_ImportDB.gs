@@ -302,7 +302,11 @@ function v3_parseListeEleves(rows) {
       success: true,
       eleves: eleves,
       count: eleves.length,
-      classes: classes
+      classes: classes,
+      optColumnDetected: colOptions >= 0,
+      lv2ColumnDetected: colLangue >= 0,
+      dispoColumnDetected: colDispo >= 0,
+      sexeColumnDetected: colSexe >= 0
     };
 
   } catch (e) {
@@ -314,6 +318,82 @@ function v3_parseListeEleves(rows) {
 // =============================================================================
 // 2. PARSING NOTES / MOYENNES (PAR CLASSE)
 // =============================================================================
+
+/**
+ * Construit la config matieres pour le parsing import, avec coefficients
+ * issus de Scoring_Matieres.gs selon le niveau detecte (6e/5e/4e/3e).
+ *
+ * Les patterns Pronote restent les memes que la version historique (testes
+ * sur les exports reels). Seuls les coefficients varient.
+ *
+ * Fallback : si getMatieresForLevel n'est pas disponible ou si une matiere
+ * n'existe pas pour le niveau (ex: LV2 en 6e), on retombe sur les valeurs
+ * historiques (equivalentes au niveau 5e).
+ *
+ * @param {string} niveau - '6e', '5e', '4e' ou '3e'
+ * @returns {Array} Liste { id, patterns, coeff, useMoy?, hasOral? }
+ */
+function getImportMatieresConfig_(niveau) {
+  var nameToId = {
+    'Francais': 'FRANC',
+    'Maths': 'MATH',
+    'Histoire-Geo': 'HG',
+    'Anglais': 'ANG',
+    'LV2': 'LV2',
+    'EPS': 'EPS',
+    'Phys.-Chimie': 'PHCH',
+    'SVT': 'SVT',
+    'Technologie': 'TECH',
+    'Arts Pla.': 'APLA',
+    'Musique': 'MUS',
+    'Latin': 'LAT'
+  };
+
+  var coeffById = {};
+  try {
+    if (typeof getMatieresForLevel === 'function') {
+      var nivConfig = getMatieresForLevel(niveau);
+      nivConfig.forEach(function(m) {
+        var id = nameToId[m.nom];
+        if (id) coeffById[id] = m.coeff;
+      });
+    }
+  } catch (e) {
+    Logger.log('[WARN] getImportMatieresConfig_: getMatieresForLevel echec, fallback 5e. ' + e);
+  }
+
+  function c(id, fallback) {
+    return (coeffById[id] !== undefined) ? coeffById[id] : fallback;
+  }
+
+  return [
+    { id: 'FRANC', patterns: ['FRANC', 'FRAN'], coeff: c('FRANC', 4.5) },
+    { id: 'MATH',  patterns: ['MATH'], coeff: c('MATH', 3.5) },
+    { id: 'HG',    patterns: ['HI.?GE', 'HG', 'H.G'], coeff: c('HG', 3.0), useMoy: true },
+    { id: 'ANG',   patterns: ['AGL1', 'ANG', 'ANGLAIS'], coeff: c('ANG', 3.0), hasOral: true },
+    { id: 'LV2',   patterns: ['ESP2', 'ALL2', 'ITA2', 'ESP', 'ALL', 'ITA'], coeff: c('LV2', 2.5), hasOral: true },
+    { id: 'EPS',   patterns: ['^EPS$', 'EPS'], coeff: c('EPS', 2.0) },
+    { id: 'PHCH',  patterns: ['PH.?CH', 'SC.?PH', 'PHYS'], coeff: c('PHCH', 1.5) },
+    { id: 'SVT',   patterns: ['^SVT$', 'SVT'], coeff: c('SVT', 1.5) },
+    { id: 'TECH',  patterns: ['TECHN'], coeff: c('TECH', 1.5) },
+    { id: 'APLA',  patterns: ['A.?PLA', 'ARTS'], coeff: c('APLA', 1.0) },
+    { id: 'MUS',   patterns: ['EDMUS', 'MUS'], coeff: c('MUS', 1.0) },
+    { id: 'LAT',   patterns: ['^LAT', 'LCALA'], coeff: c('LAT', 1.0) }
+  ];
+}
+
+function getImportCoeffMap_(niveau) {
+  var map = {};
+  getImportMatieresConfig_(niveau).forEach(function(m) { map[m.id] = m.coeff; });
+  return map;
+}
+
+function detectImportNiveau_() {
+  try {
+    if (typeof detectNiveauAuto === 'function') return detectNiveauAuto();
+  } catch (e) { /* ignore */ }
+  return '5e';
+}
 
 /**
  * Parse le collage des notes/moyennes Pronote pour UNE classe.
@@ -385,20 +465,10 @@ function v3_parseNotesMoyennes(rows) {
     var colClasse = findImportCol_(identityHeaders, ['CLASSE']);
 
     // DETECTION POSITION-BASED POUR HEADERS REPETES
-    var matieresConfig = [
-      { id: 'FRANC', patterns: ['FRANC', 'FRAN'], coeff: 4.5 },
-      { id: 'MATH',  patterns: ['MATH'], coeff: 3.5 },
-      { id: 'HG',    patterns: ['HI.?GE', 'HG', 'H.G'], coeff: 3.0, useMoy: true },
-      { id: 'ANG',   patterns: ['AGL1', 'ANG', 'ANGLAIS'], coeff: 3.0, hasOral: true },
-      { id: 'LV2',   patterns: ['ESP2', 'ALL2', 'ITA2', 'ESP', 'ALL', 'ITA'], coeff: 2.5, hasOral: true },
-      { id: 'EPS',   patterns: ['^EPS$', 'EPS'], coeff: 2.0 },
-      { id: 'PHCH',  patterns: ['PH.?CH', 'SC.?PH', 'PHYS'], coeff: 1.5 },
-      { id: 'SVT',   patterns: ['^SVT$', 'SVT'], coeff: 1.5 },
-      { id: 'TECH',  patterns: ['TECHN'], coeff: 1.5 },
-      { id: 'APLA',  patterns: ['A.?PLA', 'ARTS'], coeff: 1.0 },
-      { id: 'MUS',   patterns: ['EDMUS', 'MUS'], coeff: 1.0 },
-      { id: 'LAT',   patterns: ['^LAT', 'LCALA'], coeff: 1.0 }
-    ];
+    // Coefficients selon le niveau detecte (Scoring_Matieres.gs).
+    var importNiveau = detectImportNiveau_();
+    var matieresConfig = getImportMatieresConfig_(importNiveau);
+    Logger.log('Notes - Niveau detecte pour coeffs: ' + importNiveau);
 
     var gradeMap = {};
     var oralMap = {};
@@ -1300,14 +1370,30 @@ function v3_compileImport(data) {
     var dissoSuggestion = suggestDissoGroups_(studentMap, classeGroups);
 
     // 12. DETECTION ANOMALIES LV2/OPT
+    // On ne signale une anomalie que si la colonne source etait detectee.
+    // Si la colonne OPT n'existait pas dans l'export, l'absence d'option n'est
+    // pas une anomalie : la majorite des eleves n'ont pas d'option.
+    var optColDetected = !!(data.eleves && (data.eleves.optColumnDetected ||
+      (data.eleves.eleves && data.eleves.eleves.some(function(e) { return e && e.opt; }))));
+    var lv2ColDetected = !!(data.eleves && (data.eleves.lv2ColumnDetected ||
+      data.eleves.optColumnDetected ||
+      (data.eleves.eleves && data.eleves.eleves.some(function(e) { return e && e.lv2; }))));
+
     var anomLV2 = 0, anomOPT = 0;
     for (var cleA in studentMap) {
       var stA = studentMap[cleA];
       if (!stA.lv2) anomLV2++;
       if (!stA.opt) anomOPT++;
     }
-    if (anomLV2 > 0) RunAudit_log(runId, 'WARN', 'LV2 vide pour ' + anomLV2 + ' eleve(s)');
-    if (anomOPT > 0) RunAudit_log(runId, 'WARN', 'OPT vide pour ' + anomOPT + ' eleve(s)');
+    if (lv2ColDetected && anomLV2 > 0) {
+      RunAudit_log(runId, 'WARN', 'LV2 vide pour ' + anomLV2 + ' eleve(s) (colonne LV2/options presente)');
+    }
+    if (optColDetected && anomOPT > 0) {
+      RunAudit_log(runId, 'WARN', 'OPT vide pour ' + anomOPT + ' eleve(s) (colonne OPT presente)');
+    }
+    if (!optColDetected) {
+      RunAudit_log(runId, 'INFO', 'OPT non analysee : pas de colonne OPT/options dans l export.');
+    }
 
     RunAudit_log(runId, 'INFO', '=== COMPILATION TERMINEE ===');
 
@@ -1483,7 +1569,7 @@ function getImportScoringCfg_() {
 function calcScoreTRA_import_(moyennes) {
   if (!moyennes || Object.keys(moyennes).length === 0) return null;
   var cfg = getImportScoringCfg_();
-  var coeffMap = { 'FRANC':4.5, 'MATH':3.5, 'HG':3.0, 'ANG':3.0, 'LV2':2.5, 'EPS':2.0, 'PHCH':1.5, 'SVT':1.5, 'TECH':1.5, 'APLA':1.0, 'MUS':1.0, 'LAT':1.0 };
+  var coeffMap = getImportCoeffMap_(detectImportNiveau_());
   var totalPts = 0, totalCoeff = 0;
   for (var id in moyennes) {
     var note = moyennes[id];

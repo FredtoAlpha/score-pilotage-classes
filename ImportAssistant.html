@@ -1300,7 +1300,8 @@
         done.students = true;
         var diagnostics = res.diagnostics || {};
         var classes = diagnostics.classes || {};
-        var duplicateCount = (diagnostics.duplicateKeys || []).length;
+        var duplicates = diagnostics.duplicates || [];
+        var duplicateCount = duplicates.length;
         var html = '<div class="metric-grid">' +
           metric(res.count || 0, 'eleves') +
           metric(Object.keys(classes).length, 'classes detectees') +
@@ -1309,7 +1310,31 @@
           '</div>' +
           '<div class="chips">' + classesChips(classes) + '</div>';
         if (duplicateCount > 0) {
-          html += '<div class="issue warning"><strong>Doublons detectes</strong>Ils seront revus au preflight car ils peuvent casser le matching.</div>';
+          html += '<div class="issue warning"><strong>' + duplicateCount + ' doublon(s) NOM/PRENOM</strong>';
+          html += 'La compilation sera bloquee tant qu ils ne sont pas leves. ';
+          html += 'Si ce sont des homonymes (eleves differents), differencie-les dans la liste source (ex : ajoute une initiale au prenom). ';
+          html += 'Si c est un eleve duplique par erreur, supprime la ligne dans Pronote puis recolle.';
+          html += '<table style="width:100%; margin-top:10px; border-collapse:collapse; font-size:13px;">';
+          html += '<thead><tr style="text-align:left; border-bottom:1px solid #334155;">' +
+            '<th style="padding:6px 8px;">Eleve</th>' +
+            '<th style="padding:6px 8px;">Occurrences</th>' +
+            '<th style="padding:6px 8px;">Classe(s)</th>' +
+            '<th style="padding:6px 8px;">Lignes</th></tr></thead><tbody>';
+          duplicates.slice(0, 30).forEach(function(d) {
+            var classesTxt = (d.classes && d.classes.length) ? d.classes.join(', ') : '-';
+            var rowsTxt = (d.rows && d.rows.length) ? d.rows.join(', ') : '-';
+            var hint = (d.classes && d.classes.length > 1) ? ' (classes differentes - probablement homonymes)' : '';
+            html += '<tr style="border-bottom:1px solid #1e293b;">' +
+              '<td style="padding:6px 8px;"><strong>' + escapeHtml(d.nom + ' ' + d.prenom) + '</strong>' + escapeHtml(hint) + '</td>' +
+              '<td style="padding:6px 8px;">' + d.count + '</td>' +
+              '<td style="padding:6px 8px;">' + escapeHtml(classesTxt) + '</td>' +
+              '<td style="padding:6px 8px;">' + escapeHtml(rowsTxt) + '</td></tr>';
+          });
+          html += '</tbody></table>';
+          if (duplicates.length > 30) {
+            html += '<div class="muted" style="margin-top:6px;">' + (duplicates.length - 30) + ' autre(s) doublon(s) non affiche(s).</div>';
+          }
+          html += '</div>';
         }
         setResult('studentsResult', duplicateCount > 0 ? 'warn' : 'ok', html);
         renderStepNav();
