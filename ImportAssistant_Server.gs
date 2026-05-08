@@ -649,7 +649,9 @@ function ia_scoreByThreshold_(value, thresholds) {
 
 function ia_calcScoreTRAPreview_(moyennes, cfg) {
   if (!moyennes || Object.keys(moyennes).length === 0) return null;
-  var coeffMap = { FRANC: 4.5, MATH: 3.5, HG: 3.0, ANG: 3.0, LV2: 2.5, EPS: 2.0, PHCH: 1.5, SVT: 1.5, TECH: 1.5, APLA: 1.0, MUS: 1.0, LAT: 1.0 };
+  var coeffMap = (typeof getImportCoeffMap_ === 'function')
+    ? getImportCoeffMap_(typeof detectImportNiveau_ === 'function' ? detectImportNiveau_() : '5e')
+    : { FRANC: 4.5, MATH: 3.5, HG: 3.0, ANG: 3.0, LV2: 2.5, EPS: 2.0, PHCH: 1.5, SVT: 1.5, TECH: 1.5, APLA: 1.0, MUS: 1.0, LAT: 1.0 };
   var totalPts = 0;
   var totalCoeff = 0;
   for (var id in moyennes) {

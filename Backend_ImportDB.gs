@@ -316,6 +316,82 @@ function v3_parseListeEleves(rows) {
 // =============================================================================
 
 /**
+ * Construit la config matieres pour le parsing import, avec coefficients
+ * issus de Scoring_Matieres.gs selon le niveau detecte (6e/5e/4e/3e).
+ *
+ * Les patterns Pronote restent les memes que la version historique (testes
+ * sur les exports reels). Seuls les coefficients varient.
+ *
+ * Fallback : si getMatieresForLevel n'est pas disponible ou si une matiere
+ * n'existe pas pour le niveau (ex: LV2 en 6e), on retombe sur les valeurs
+ * historiques (equivalentes au niveau 5e).
+ *
+ * @param {string} niveau - '6e', '5e', '4e' ou '3e'
+ * @returns {Array} Liste { id, patterns, coeff, useMoy?, hasOral? }
+ */
+function getImportMatieresConfig_(niveau) {
+  var nameToId = {
+    'Francais': 'FRANC',
+    'Maths': 'MATH',
+    'Histoire-Geo': 'HG',
+    'Anglais': 'ANG',
+    'LV2': 'LV2',
+    'EPS': 'EPS',
+    'Phys.-Chimie': 'PHCH',
+    'SVT': 'SVT',
+    'Technologie': 'TECH',
+    'Arts Pla.': 'APLA',
+    'Musique': 'MUS',
+    'Latin': 'LAT'
+  };
+
+  var coeffById = {};
+  try {
+    if (typeof getMatieresForLevel === 'function') {
+      var nivConfig = getMatieresForLevel(niveau);
+      nivConfig.forEach(function(m) {
+        var id = nameToId[m.nom];
+        if (id) coeffById[id] = m.coeff;
+      });
+    }
+  } catch (e) {
+    Logger.log('[WARN] getImportMatieresConfig_: getMatieresForLevel echec, fallback 5e. ' + e);
+  }
+
+  function c(id, fallback) {
+    return (coeffById[id] !== undefined) ? coeffById[id] : fallback;
+  }
+
+  return [
+    { id: 'FRANC', patterns: ['FRANC', 'FRAN'], coeff: c('FRANC', 4.5) },
+    { id: 'MATH',  patterns: ['MATH'], coeff: c('MATH', 3.5) },
+    { id: 'HG',    patterns: ['HI.?GE', 'HG', 'H.G'], coeff: c('HG', 3.0), useMoy: true },
+    { id: 'ANG',   patterns: ['AGL1', 'ANG', 'ANGLAIS'], coeff: c('ANG', 3.0), hasOral: true },
+    { id: 'LV2',   patterns: ['ESP2', 'ALL2', 'ITA2', 'ESP', 'ALL', 'ITA'], coeff: c('LV2', 2.5), hasOral: true },
+    { id: 'EPS',   patterns: ['^EPS$', 'EPS'], coeff: c('EPS', 2.0) },
+    { id: 'PHCH',  patterns: ['PH.?CH', 'SC.?PH', 'PHYS'], coeff: c('PHCH', 1.5) },
+    { id: 'SVT',   patterns: ['^SVT$', 'SVT'], coeff: c('SVT', 1.5) },
+    { id: 'TECH',  patterns: ['TECHN'], coeff: c('TECH', 1.5) },
+    { id: 'APLA',  patterns: ['A.?PLA', 'ARTS'], coeff: c('APLA', 1.0) },
+    { id: 'MUS',   patterns: ['EDMUS', 'MUS'], coeff: c('MUS', 1.0) },
+    { id: 'LAT',   patterns: ['^LAT', 'LCALA'], coeff: c('LAT', 1.0) }
+  ];
+}
+
+function getImportCoeffMap_(niveau) {
+  var map = {};
+  getImportMatieresConfig_(niveau).forEach(function(m) { map[m.id] = m.coeff; });
+  return map;
+}
+
+function detectImportNiveau_() {
+  try {
+    if (typeof detectNiveauAuto === 'function') return detectNiveauAuto();
+  } catch (e) { /* ignore */ }
+  return '5e';
+}
+
+/**
  * Parse le collage des notes/moyennes Pronote pour UNE classe.
  * Gere les headers repetes (AGL1 x3 = ecrit, oral, moyenne).
  *
@@ -385,20 +461,10 @@ function v3_parseNotesMoyennes(rows) {
     var colClasse = findImportCol_(identityHeaders, ['CLASSE']);
 
     // DETECTION POSITION-BASED POUR HEADERS REPETES
-    var matieresConfig = [
-      { id: 'FRANC', patterns: ['FRANC', 'FRAN'], coeff: 4.5 },
-      { id: 'MATH',  patterns: ['MATH'], coeff: 3.5 },
-      { id: 'HG',    patterns: ['HI.?GE', 'HG', 'H.G'], coeff: 3.0, useMoy: true },
-      { id: 'ANG',   patterns: ['AGL1', 'ANG', 'ANGLAIS'], coeff: 3.0, hasOral: true },
-      { id: 'LV2',   patterns: ['ESP2', 'ALL2', 'ITA2', 'ESP', 'ALL', 'ITA'], coeff: 2.5, hasOral: true },
-      { id: 'EPS',   patterns: ['^EPS$', 'EPS'], coeff: 2.0 },
-      { id: 'PHCH',  patterns: ['PH.?CH', 'SC.?PH', 'PHYS'], coeff: 1.5 },
-      { id: 'SVT',   patterns: ['^SVT$', 'SVT'], coeff: 1.5 },
-      { id: 'TECH',  patterns: ['TECHN'], coeff: 1.5 },
-      { id: 'APLA',  patterns: ['A.?PLA', 'ARTS'], coeff: 1.0 },
-      { id: 'MUS',   patterns: ['EDMUS', 'MUS'], coeff: 1.0 },
-      { id: 'LAT',   patterns: ['^LAT', 'LCALA'], coeff: 1.0 }
-    ];
+    // Coefficients selon le niveau detecte (Scoring_Matieres.gs).
+    var importNiveau = detectImportNiveau_();
+    var matieresConfig = getImportMatieresConfig_(importNiveau);
+    Logger.log('Notes - Niveau detecte pour coeffs: ' + importNiveau);
 
     var gradeMap = {};
     var oralMap = {};
@@ -1483,7 +1549,7 @@ function getImportScoringCfg_() {
 function calcScoreTRA_import_(moyennes) {
   if (!moyennes || Object.keys(moyennes).length === 0) return null;
   var cfg = getImportScoringCfg_();
-  var coeffMap = { 'FRANC':4.5, 'MATH':3.5, 'HG':3.0, 'ANG':3.0, 'LV2':2.5, 'EPS':2.0, 'PHCH':1.5, 'SVT':1.5, 'TECH':1.5, 'APLA':1.0, 'MUS':1.0, 'LAT':1.0 };
+  var coeffMap = getImportCoeffMap_(detectImportNiveau_());
   var totalPts = 0, totalCoeff = 0;
   for (var id in moyennes) {
     var note = moyennes[id];
